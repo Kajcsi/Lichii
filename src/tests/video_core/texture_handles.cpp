@@ -344,4 +344,15 @@ TEST_CASE("Storage handle words are read from the host-aligned buffer base",
     CHECK(VideoCommon::EvaluateTextureHandle(info, 0, memory, cbuf_address, 16) == 0x11U);
     CHECK(VideoCommon::EvaluateTextureHandle(info, 0, memory, cbuf_address, 4) == 0x22U);
     CHECK(VideoCommon::EvaluateTextureHandle(info, 0, memory, cbuf_address, 0) == 0x22U);
+
+    SECTION("Indirect buffers align the address read from the table, not the table") {
+        // The constant buffer points at a table that is not aligned. The buffer address is read
+        // from the table entry at its exact address, then aligned down.
+        memory.words[cbuf + 0x10] = 0x3004;
+        memory.words[0x3004 + 0x8] = 0x2008;
+        memory.words[0x3004 + 0xc] = 0;
+        info.storage_buffers_descriptors[0].indirect_offset = 0x8;
+        CHECK(VideoCommon::EvaluateTextureHandle(info, 0, memory, cbuf_address, 16) == 0x11U);
+        CHECK(VideoCommon::EvaluateTextureHandle(info, 0, memory, cbuf_address, 4) == 0x22U);
+    }
 }
