@@ -3218,6 +3218,8 @@ public:
     /// Before a macro reads memory (MME DMA), from the thread that runs it: waits until the
     /// host query results there are written to guest memory.
     void WaitForQueryWrites(GPUVAddr source, size_t size);
+    /// WaitForQueryWrites on the thread that owns the query cache.
+    void WaitForQueryWritesOwned(GPUVAddr source, size_t size);
 
     bool ShouldExecute() const {
         return execute_on;

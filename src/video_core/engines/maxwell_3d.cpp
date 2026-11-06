@@ -1411,6 +1411,15 @@ void Maxwell3D::WaitForQueryWrites(GPUVAddr source, size_t size) {
     // report, but here the semaphore's release is written at once, so a late fencing thread
     // left the macro an older frame's result (Ocarina of Time's predicate macro skips or draws
     // Link's parts by it).
+    // The query cache belongs to the split's back, which allocates queries in its streamers, so
+    // the check and the wait run there (inline without the split, or on the back). The front
+    // drains the back before its DMA reads, so this hands one entry to an idle back.
+    VideoCommon::GpuSplit::Get().Run(
+        [this, source, size] { WaitForQueryWritesOwned(source, size); },
+        VideoCommon::DrainSite::MacroDmaQuery);
+}
+
+void Maxwell3D::WaitForQueryWritesOwned(GPUVAddr source, size_t size) {
     const auto pending = [&] {
         for (GPUVAddr page = source & ~GPUVAddr{0xfff}; page < source + size; page += 0x1000) {
             const GPUVAddr begin = std::max(page, source);
@@ -1426,11 +1435,9 @@ void Maxwell3D::WaitForQueryWrites(GPUVAddr source, size_t size) {
         return;
     }
     const auto start = std::chrono::steady_clock::now();
-    // The rasterizer belongs to the split's back: it commits them to a fence and submits it.
-    // The fencing thread then writes them without anything from this thread.
-    VideoCommon::GpuSplit::Get().Run(
-        [rasterizer = rasterizer] { rasterizer->SubmitPendingQueryWrites(); },
-        VideoCommon::DrainSite::MacroDmaQuery);
+    // Commits them to a fence and submits it with the deferred work, so the fencing thread
+    // writes them without anything more from this thread.
+    rasterizer->SubmitPendingQueryWrites();
     bool timed_out = false;
     for (u32 spins = 0; pending(); ++spins) {
         if (std::chrono::steady_clock::now() - start > std::chrono::milliseconds{100}) {
